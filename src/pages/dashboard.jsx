@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import styled from 'styled-components';
-
-// ... imports remain unchanged
+import axiosInstance from '../utils/axiosInstance';
 import { setTasks, addTask, deleteTask, updateTask } from '../features/tasks/taskSlice';
 
 const Container = styled.div`
@@ -46,6 +45,14 @@ const Button = styled.button`
   }
 `;
 
+const CancelButton = styled(Button)`
+  background-color: #d32f2f;
+
+  &:hover {
+    background-color: #c62828;
+  }
+`;
+
 const TaskList = styled.ul`
   list-style: none;
   padding: 0;
@@ -63,68 +70,70 @@ const TaskActions = styled.div`
   margin-top: 10px;
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 `;
 
-const TaskEditContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-`;
-
-const CancelButton = styled(Button)`
-  background-color: #d32f2f;
+const StatusButton = styled(Button)`
+  background-color: ${(props) =>
+    props.status === 'complete' ? '#388e3c' : '#d32f2f'};
 
   &:hover {
-    background-color: #c62828;
+    background-color: ${(props) =>
+      props.status === 'complete' ? '#2e7d32' : '#c62828'};
   }
 `;
-
 
 function DashboardPage() {
   const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
-  const tasks = useSelector((state) => state.tasks);
+  const tasks = useSelector((state) => state.tasks.tasks);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [editId, setEditId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/tasks`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => res.json())
-      .then(json => {
-        if (Array.isArray(json.data)) {
-          dispatch(setTasks(json.data));
+    const fetchTasks = async () => {
+      try {
+        const res = await axiosInstance.get('/tasks');
+        if (res.status === 200 && Array.isArray(res.data.data)) {
+          dispatch(setTasks(res.data.data));
         }
-      });
+      } catch (err) {
+        console.error('Failed to fetch tasks', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTasks();
   }, [dispatch, token]);
 
   const handleAdd = async () => {
     if (!title || !description) return;
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/tasks`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title, description }),
-    });
-    const data = await res.json();
-    if (res.ok) dispatch(addTask(data));
-    setTitle('');
-    setDescription('');
+    try {
+      const res = await axiosInstance.post('/tasks', { title, description, status: 'pending' });
+      if (res.status === 201) {
+        dispatch(addTask(res.data));
+        setTitle('');
+        setDescription('');
+      }
+    } catch (err) {
+      console.error('Failed to add task', err);
+    }
   };
 
   const handleDelete = async (id) => {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/tasks/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) dispatch(deleteTask(id));
+    try {
+      const res = await axiosInstance.delete(`/tasks/${id}`);
+      if (res.status === 200) {
+        dispatch(deleteTask(id));
+      }
+    } catch (err) {
+      console.error('Failed to delete task', err);
+    }
   };
 
   const startEdit = (task) => {
@@ -134,58 +143,98 @@ function DashboardPage() {
   };
 
   const handleUpdate = async () => {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/tasks/${editId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title: editTitle, description: editDescription }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      dispatch(updateTask(data));
-      setEditId(null);
-      setEditTitle('');
-      setEditDescription('');
+    try {
+      const res = await axiosInstance.put(`/tasks/${editId}`, {
+        title: editTitle,
+        description: editDescription,
+      });
+      if (res.status === 200) {
+        dispatch(updateTask(res.data));
+        setEditId(null);
+        setEditTitle('');
+        setEditDescription('');
+      }
+    } catch (err) {
+      console.error('Failed to update task', err);
+    }
+  };
+
+  const toggleStatus = async (task) => {
+    const newStatus = task.status === 'complete' ? 'pending' : 'complete';
+    try {
+      const res = await axiosInstance.put(`/tasks/${task.id}`, {
+        ...task,
+        status: newStatus,
+      });
+      if (res.status === 200) {
+        dispatch(updateTask(res.data));
+      }
+    } catch (err) {
+      console.error('Failed to update status', err);
     }
   };
 
   return (
     <Container>
       <Title>Task Dashboard</Title>
-      <TaskInputContainer>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
-        <Button onClick={handleAdd}>Add Task</Button>
-      </TaskInputContainer>
+      {loading ? (
+        <div>Loading...</div>
+      ) : (
+        <>
+          <TaskInputContainer>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
+            <Input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Description"
+            />
+            <Button onClick={handleAdd}>Add Task</Button>
+          </TaskInputContainer>
 
-      <TaskList>
-        {tasks.map(task => (
-          <TaskItem key={task.id}>
-            {editId === task.id ? (
-              <>
-                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-                <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
-                <TaskActions>
-                  <Button onClick={handleUpdate}>Save</Button>
-                  <Button onClick={() => setEditId(null)}>Cancel</Button>
-                </TaskActions>
-              </>
+          <TaskList>
+            {Array.isArray(tasks) && tasks.length > 0 ? (
+              tasks.map((task) => (
+                <TaskItem key={task.id}>
+                  {editId === task.id ? (
+                    <>
+                      <Input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                      />
+                      <Input
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                      />
+                      <TaskActions>
+                        <Button onClick={handleUpdate}>Save</Button>
+                        <CancelButton onClick={() => setEditId(null)}>Cancel</CancelButton>
+                      </TaskActions>
+                    </>
+                  ) : (
+                    <>
+                      <strong>{task.title}</strong>
+                      <div>{task.description}</div>
+                      <div>Status: {task.status}</div>
+                      <TaskActions>
+                        <StatusButton
+                          status={task.status}
+                          onClick={() => toggleStatus(task)}
+                        >
+                          {task.status === 'complete' ? 'Mark Pending' : 'Mark Complete'}
+                        </StatusButton>
+                        <Button onClick={() => startEdit(task)}>Edit</Button>
+                        <CancelButton onClick={() => handleDelete(task.id)}>Delete</CancelButton>
+                      </TaskActions>
+                    </>
+                  )}
+                </TaskItem>
+              ))
             ) : (
-              <>
-                <strong>{task.title}</strong>
-                <div>{task.description}</div>
-                <div>Status: {task.status}</div>
-                <TaskActions>
-                  <Button onClick={() => startEdit(task)}>Edit</Button>
-                  <Button onClick={() => handleDelete(task.id)}>Delete</Button>
-                </TaskActions>
-              </>
+              <div>No tasks available.</div>
             )}
-          </TaskItem>
-        ))}
-      </TaskList>
+          </TaskList>
+        </>
+      )}
     </Container>
   );
 }

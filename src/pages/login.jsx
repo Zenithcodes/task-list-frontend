@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { setCredentials } from '../features/auth/authSlice';
-import styled from 'styled-components';
-
-const Container = styled.div`
-  display: flex;
-  flex-direction: column;
-  max-width: 300px;
-  margin: 100px auto;
-`;
+import axiosInstance from '../utils/axiosInstance'; 
+import {
+  Container,
+  Title,
+  Form,
+  Input,
+  Button,
+  LinkText,
+} from '../components/styledAuthComponents';
 
 function LoginPage() {
   const dispatch = useDispatch();
@@ -19,27 +20,45 @@ function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/users/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    console.log("data", data)
-    if (res.ok) {
-      dispatch(setCredentials({ user: data.user, token: data.tokens.accessToken }));
+    try {
+      const response = await axiosInstance.post(
+        '/users/login', 
+        { email, password }
+      );
+      console.log(response)
+      const {  tokens } = response.data;
+      const user = response?.data?.data?.user;
+      dispatch(setCredentials({ user, token: tokens.accessToken }));
+      localStorage.setItem('refreshToken', tokens.refreshToken); 
       navigate('/dashboard');
+    } catch (error) {
+      alert(error.response?.data?.message || 'Login failed');
     }
   };
 
   return (
     <Container>
-      <h2>Login</h2>
-      <form onSubmit={handleSubmit}>
-        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        <button type="submit">Login</button>
-      </form>
+      <Title>Login</Title>
+      <Form onSubmit={handleSubmit}>
+        <Input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <Input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        <Button type="submit">Login</Button>
+      </Form>
+      <LinkText>
+        Don't have an account? <Link to="/register">Register</Link>
+      </LinkText>
     </Container>
   );
 }
