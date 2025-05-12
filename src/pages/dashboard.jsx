@@ -30,6 +30,13 @@ const Input = styled.input`
   font-size: 16px;
 `;
 
+const Select = styled.select`
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+`;
+
 const Button = styled.button`
   padding: 10px;
   background-color: #1976d2;
@@ -74,12 +81,18 @@ const TaskActions = styled.div`
 `;
 
 const StatusButton = styled(Button)`
-  background-color: ${(props) =>
-    props.status === 'complete' ? '#388e3c' : '#d32f2f'};
+  background-color: ${(props) => {
+    if (props.status === 'pending') return '#f57c00';
+    if (props.status === 'in-progress') return '#1976d2';
+    return '#388e3c';
+  }};
 
   &:hover {
-    background-color: ${(props) =>
-      props.status === 'complete' ? '#2e7d32' : '#c62828'};
+    background-color: ${(props) => {
+      if (props.status === 'pending') return '#ef6c00';
+      if (props.status === 'in-progress') return '#1565c0';
+      return '#2e7d32';
+    }};
   }
 `;
 
@@ -89,9 +102,11 @@ function DashboardPage() {
   const tasks = useSelector((state) => state.tasks.tasks);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [status, setStatus] = useState('pending');
   const [editId, setEditId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editStatus, setEditStatus] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -114,11 +129,12 @@ function DashboardPage() {
   const handleAdd = async () => {
     if (!title || !description) return;
     try {
-      const res = await axiosInstance.post('/tasks', { title, description, status: 'pending' });
+      const res = await axiosInstance.post('/tasks', { title, description, status });
       if (res.status === 201) {
         dispatch(addTask(res.data));
         setTitle('');
         setDescription('');
+        setStatus('pending');
       }
     } catch (err) {
       console.error('Failed to add task', err);
@@ -140,6 +156,7 @@ function DashboardPage() {
     setEditId(task.id);
     setEditTitle(task.title);
     setEditDescription(task.description);
+    setEditStatus(task.status);
   };
 
   const handleUpdate = async () => {
@@ -147,20 +164,35 @@ function DashboardPage() {
       const res = await axiosInstance.put(`/tasks/${editId}`, {
         title: editTitle,
         description: editDescription,
+        status: editStatus,
       });
       if (res.status === 200) {
         dispatch(updateTask(res.data));
         setEditId(null);
         setEditTitle('');
         setEditDescription('');
+        setEditStatus('');
       }
     } catch (err) {
       console.error('Failed to update task', err);
     }
   };
 
+  const getNextStatus = (current) => {
+    switch (current) {
+      case 'pending':
+        return 'in-progress';
+      case 'in-progress':
+        return 'done';
+      case 'done':
+        return 'pending';
+      default:
+        return 'pending';
+    }
+  };
+
   const toggleStatus = async (task) => {
-    const newStatus = task.status === 'complete' ? 'pending' : 'complete';
+    const newStatus = getNextStatus(task.status);
     try {
       const res = await axiosInstance.put(`/tasks/${task.id}`, {
         ...task,
@@ -188,6 +220,11 @@ function DashboardPage() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description"
             />
+            <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="pending">Pending</option>
+              <option value="in-progress">In Progress</option>
+              <option value="done">Done</option>
+            </Select>
             <Button onClick={handleAdd}>Add Task</Button>
           </TaskInputContainer>
 
@@ -205,6 +242,11 @@ function DashboardPage() {
                         value={editDescription}
                         onChange={(e) => setEditDescription(e.target.value)}
                       />
+                      <Select value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
+                        <option value="pending">Pending</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="done">Done</option>
+                      </Select>
                       <TaskActions>
                         <Button onClick={handleUpdate}>Save</Button>
                         <CancelButton onClick={() => setEditId(null)}>Cancel</CancelButton>
@@ -220,7 +262,9 @@ function DashboardPage() {
                           status={task.status}
                           onClick={() => toggleStatus(task)}
                         >
-                          {task.status === 'complete' ? 'Mark Pending' : 'Mark Complete'}
+                          {task.status === 'pending' && 'Start'}
+                          {task.status === 'in-progress' && 'Complete'}
+                          {task.status === 'done' && 'Reset'}
                         </StatusButton>
                         <Button onClick={() => startEdit(task)}>Edit</Button>
                         <CancelButton onClick={() => handleDelete(task.id)}>Delete</CancelButton>
